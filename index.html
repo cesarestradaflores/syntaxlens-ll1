@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SyntaxLens LL(1) — Visualizador de análisis sintáctico predictivo</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Cabecera minimalista de herramienta de desarrollo -->
+  <header class="app-header">
+    <div class="container header-row">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">LL(1)</span>
+        <div class="brand-copy">
+          <h1 class="brand-title">SyntaxLens LL(1)</h1>
+          <p class="brand-subtitle">Visualizador de análisis sintáctico predictivo · Autómatas I</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button
+          type="button"
+          id="btn-run-tests"
+          class="btn btn-secondary btn-sm"
+          title="Ejecutar suite de pruebas automatizadas (SyntaxLens.Tests.run())"
+        >
+          Ejecutar pruebas
+        </button>
+        <button
+          type="button"
+          id="theme-toggle"
+          class="btn btn-ghost btn-sm"
+          aria-label="Alternar entre modo claro y oscuro"
+        >
+          <span id="theme-label">Modo claro</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Barra global de estado: veredicto LL(1) + badges de conteos -->
+    <div class="status-strip">
+      <div class="container status-strip-inner">
+        <div id="global-verdict-banner" class="verdict-pill verdict-pill-info hidden" role="status" aria-live="polite"></div>
+        <div class="badges-row" aria-label="Contadores de la gramática">
+          <span class="metric-badge" id="badge-nt">No terminales: <strong>—</strong></span>
+          <span class="metric-badge" id="badge-t">Terminales: <strong>—</strong></span>
+          <span class="metric-badge" id="badge-prod">Producciones: <strong>—</strong></span>
+          <span class="metric-badge" id="badge-conflicts">Conflictos: <strong>—</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pestañas de navegación -->
+    <nav class="tabs-bar" aria-label="Vistas de SyntaxLens LL(1)">
+      <div class="container tabs-inner" role="tablist">
+        <button type="button" class="tab-btn active" role="tab" id="tab-grammar" data-tab="grammar" aria-selected="true">
+          Gramática
+        </button>
+        <button type="button" class="tab-btn" role="tab" id="tab-sets" data-tab="sets" aria-selected="false">
+          FIRST / FOLLOW
+        </button>
+        <button type="button" class="tab-btn" role="tab" id="tab-matrix" data-tab="matrix" aria-selected="false">
+          Matriz LL(1)
+        </button>
+        <button type="button" class="tab-btn" role="tab" id="tab-sim" data-tab="sim" aria-selected="false">
+          Simulación
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container app-main">
+    <!-- Panel colapsable de resultados de pruebas automatizadas -->
+    <section id="tests-drawer" class="panel tests-drawer hidden" aria-labelledby="heading-tests">
+      <div class="panel-header">
+        <div>
+          <h2 id="heading-tests" class="panel-title">Pruebas automatizadas (SyntaxLens.Tests)</h2>
+          <p id="tests-summary-text" class="panel-desc"></p>
+        </div>
+        <button type="button" id="btn-close-tests" class="btn btn-ghost btn-sm">Cerrar</button>
+      </div>
+      <div class="table-scroll tests-table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col" class="col-num">#</th>
+              <th scope="col">Estado</th>
+              <th scope="col">Categoría</th>
+              <th scope="col">Prueba</th>
+              <th scope="col">Resultado real</th>
+            </tr>
+          </thead>
+          <tbody id="tests-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ====================================================================
+         PESTAÑA 1: GRAMÁTICA
+         ==================================================================== -->
+    <div id="view-grammar" class="tab-view" role="tabpanel" aria-labelledby="tab-grammar">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Editor de gramática</h2>
+            <p class="panel-desc">
+              Escribe una producción por línea usando <code>-&gt;</code> o <code>→</code>, alternativas con <code>|</code> y epsilon como <code>ε</code>, <code>eps</code> o <code>epsilon</code>.
+            </p>
+          </div>
+        </div>
+
+        <div class="form-stack">
+          <div class="field-group">
+            <label for="example-select" class="field-label">Ejemplos precargados</label>
+            <div class="example-select-row">
+              <select id="example-select" class="input-select"></select>
+              <span id="example-tag" class="tag tag-ok">LL(1): Sí</span>
+            </div>
+            <p id="example-desc" class="field-hint"></p>
+          </div>
+
+          <div class="field-group">
+            <div class="label-between">
+              <label for="grammar-input" class="field-label">Producciones</label>
+              <span class="field-hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> para analizar</span>
+            </div>
+
+            <!-- Editor con numeración de líneas sincronizada -->
+            <div class="code-editor">
+              <div id="line-numbers" class="line-numbers" aria-hidden="true">1</div>
+              <textarea
+                id="grammar-input"
+                class="code-textarea"
+                rows="8"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="E  -> T E'&#10;E' -> + T E' | ε&#10;T  -> F T'&#10;T' -> * F T' | ε&#10;F  -> ( E ) | id"
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="toolbar-row">
+            <button type="button" id="btn-analyze" class="btn btn-primary">Analizar gramática</button>
+            <button type="button" id="btn-insert-eps" class="btn btn-secondary">Insertar ε</button>
+            <button type="button" id="btn-clear-grammar" class="btn btn-ghost">Limpiar</button>
+          </div>
+
+          <details class="info-details">
+            <summary>Convenciones de la gramática</summary>
+            <ul class="compact-list">
+              <li>Símbolos separados por espacios en la parte derecha (<code>id</code> es un terminal; <code>E'</code> es un no terminal).</li>
+              <li>Un símbolo es no terminal si aparece al lado izquierdo de alguna producción; el resto es terminal.</li>
+              <li>El primer no terminal definido es el símbolo inicial.</li>
+              <li>Se permiten varias líneas para un mismo no terminal; las líneas vacías se ignoran.</li>
+              <li><code>$</code> está reservado exclusivamente para fin de entrada.</li>
+            </ul>
+          </details>
+
+          <div id="validation-output" class="messages-stack" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- Resumen de símbolos y producciones numeradas -->
+      <section id="grammar-summary-panel" class="panel hidden">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Símbolos y producciones numeradas</h2>
+            <p class="panel-desc">Los números de producción se referencian en la matriz LL(1) y en la simulación.</p>
+          </div>
+          <div class="toolbar-row">
+            <button type="button" class="btn btn-ghost btn-sm" data-goto="sets">Ir a FIRST / FOLLOW →</button>
+          </div>
+        </div>
+
+        <div class="symbols-grid">
+          <div class="symbol-card">
+            <h3 class="sub-heading">Símbolo inicial</h3>
+            <div id="start-symbol-box" class="chips-list"></div>
+          </div>
+          <div class="symbol-card">
+            <h3 class="sub-heading">No terminales (V<sub>N</sub>)</h3>
+            <div id="nt-list-box" class="chips-list"></div>
+          </div>
+          <div class="symbol-card">
+            <h3 class="sub-heading">Terminales (V<sub>T</sub>)</h3>
+            <div id="t-list-box" class="chips-list"></div>
+          </div>
+        </div>
+
+        <div class="block-gap">
+          <h3 class="sub-heading">Producciones</h3>
+          <ol id="productions-ol" class="productions-grid"></ol>
+        </div>
+      </section>
+    </div>
+
+    <!-- ====================================================================
+         PESTAÑA 2: FIRST / FOLLOW
+         ==================================================================== -->
+    <div id="view-sets" class="tab-view hidden" role="tabpanel" aria-labelledby="tab-sets">
+      <div id="sets-empty-state" class="empty-state">
+        La gramática cambió. Pulsa 'Analizar gramática' para actualizar los resultados.
+      </div>
+
+      <section id="sets-content-panel" class="panel hidden">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Conjuntos FIRST y FOLLOW</h2>
+            <p class="panel-desc">Calculados mediante iteración hasta alcanzar punto fijo.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" data-goto="matrix">Ir a Matriz LL(1) →</button>
+        </div>
+
+        <div class="two-col-grid">
+          <div class="sub-panel">
+            <h3 class="sub-heading">FIRST (No terminales)</h3>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">No terminal</th>
+                    <th scope="col">FIRST(X)</th>
+                  </tr>
+                </thead>
+                <tbody id="first-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="sub-panel">
+            <h3 class="sub-heading">FOLLOW (No terminales)</h3>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">No terminal</th>
+                    <th scope="col">FOLLOW(X)</th>
+                  </tr>
+                </thead>
+                <tbody id="follow-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="block-gap">
+          <h3 class="sub-heading">FIRST(α) por producción</h3>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col" class="col-num">#</th>
+                  <th scope="col">Producción (A → α)</th>
+                  <th scope="col">FIRST(α)</th>
+                  <th scope="col" class="col-center">Anulable</th>
+                </tr>
+              </thead>
+              <tbody id="prod-first-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Panel colapsable "Ver cómo se calculó" -->
+        <details id="sets-trace-details" class="trace-details">
+          <summary>Ver cómo se calculó (razonamiento por iteración)</summary>
+          <div class="trace-body">
+            <div class="sub-tabs" role="tablist">
+              <button type="button" class="sub-tab active" role="tab" data-trace="first" aria-selected="true">
+                Iteraciones de FIRST
+              </button>
+              <button type="button" class="sub-tab" role="tab" data-trace="follow" aria-selected="false">
+                Iteraciones de FOLLOW
+              </button>
+            </div>
+            <div id="trace-first-box" class="trace-list"></div>
+            <div id="trace-follow-box" class="trace-list hidden"></div>
+          </div>
+        </details>
+      </section>
+    </div>
+
+    <!-- ====================================================================
+         PESTAÑA 3: MATRIZ LL(1)
+         ==================================================================== -->
+    <div id="view-matrix" class="tab-view hidden" role="tabpanel" aria-labelledby="tab-matrix">
+      <div id="matrix-empty-state" class="empty-state">
+        La gramática cambió. Pulsa 'Analizar gramática' para actualizar los resultados.
+      </div>
+
+      <section id="matrix-content-panel" class="panel hidden">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Matriz predictiva LL(1) y diagnóstico</h2>
+            <p class="panel-desc">
+              Filas = no terminales; columnas = terminales y <code>$</code>. Pasa el cursor por una celda para ver su origen o haz clic para resaltar fila y columna.
+            </p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" data-goto="sim">Ir a Simulación →</button>
+        </div>
+
+        <!-- Veredicto detallado, lista de conflictos y sugerencias -->
+        <div id="matrix-verdict-box" class="verdict-block"></div>
+
+        <!-- Asistente de corrección de gramáticas -->
+        <div id="assistant-panel" class="assistant-panel hidden" aria-live="polite"></div>
+
+        <!-- Leyenda y barra de selección -->
+        <div class="matrix-bar">
+          <div class="legend-row">
+            <span class="legend-item"><span class="swatch swatch-ok"></span>Producción única</span>
+            <span class="legend-item"><span class="swatch swatch-empty"></span>Vacía (error sintáctico)</span>
+            <span class="legend-item"><span class="swatch swatch-err"></span>Conflicto</span>
+          </div>
+          <div class="selection-row">
+            <span id="matrix-selection-label" class="field-hint">Clic en celda o encabezado para resaltar</span>
+            <button type="button" id="btn-clear-matrix-hl" class="btn btn-ghost btn-sm hidden">Quitar resaltado</button>
+          </div>
+        </div>
+
+        <div class="table-scroll matrix-scroll">
+          <table class="matrix-table" id="main-matrix-table">
+            <thead id="main-matrix-thead"></thead>
+            <tbody id="main-matrix-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- ====================================================================
+         PESTAÑA 4: SIMULACIÓN
+         ==================================================================== -->
+    <div id="view-sim" class="tab-view hidden" role="tabpanel" aria-labelledby="tab-sim">
+      <div id="sim-empty-state" class="empty-state">
+        La gramática cambió. Pulsa 'Analizar gramática' para actualizar los resultados.
+      </div>
+
+      <section id="sim-content-panel" class="panel hidden">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Simulador paso a paso LL(1)</h2>
+            <p class="panel-desc">
+              Ejecuta el analizador predictivo con pila sobre cualquier cadena y observa cada transición.
+            </p>
+          </div>
+        </div>
+
+        <!-- Aviso de bloqueo si la gramática no es LL(1) -->
+        <div id="sim-blocked-box" class="alert alert-error hidden" role="alert">
+          <div class="alert-title">Simulación bloqueada: la gramática no es LL(1)</div>
+          <p id="sim-blocked-msg" class="alert-text"></p>
+          <div class="toolbar-row">
+            <button type="button" id="btn-blocked-goto-matrix" class="btn btn-secondary btn-sm">
+              Ver conflictos en Matriz LL(1)
+            </button>
+          </div>
+        </div>
+
+        <!-- Área interactiva de simulación -->
+        <div id="sim-active-area" class="sim-stack">
+          <div class="sim-controls-card">
+            <div class="sim-inputs-grid">
+              <div class="field-group">
+                <label for="chain-input" class="field-label">Cadena de entrada</label>
+                <div class="input-action-row">
+                  <input
+                    type="text"
+                    id="chain-input"
+                    class="input-text mono"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Ej. id+id*id (déjalo vacío para analizar cadena vacía)"
+                  />
+                  <button type="button" id="btn-sim-start" class="btn btn-primary">Simular</button>
+                  <button type="button" id="btn-sim-clear" class="btn btn-ghost">Limpiar</button>
+                </div>
+              </div>
+
+              <div class="field-group">
+                <label for="tokenize-mode" class="field-label">Modo de tokenización</label>
+                <select id="tokenize-mode" class="input-select">
+                  <option value="auto" selected>Automático (terminal más largo primero)</option>
+                  <option value="spaces">Tokens separados por espacios</option>
+                </select>
+                <span id="tokenize-mode-desc" class="field-hint"></span>
+              </div>
+
+              <div class="field-group sim-limit-field">
+                <label for="max-steps-input" class="field-label">Límite de pasos</label>
+                <input
+                  type="number"
+                  id="max-steps-input"
+                  class="input-text mono"
+                  min="5"
+                  max="10000"
+                  step="50"
+                  value="1000"
+                />
+              </div>
+            </div>
+
+            <!-- Vista previa de tokens + $ automático -->
+            <div id="token-preview-bar" class="token-preview-bar" aria-live="polite"></div>
+
+            <!-- Botones de cadenas de ejemplo -->
+            <div id="chain-examples-row" class="examples-row">
+              <span class="field-label">Cadenas de ejemplo:</span>
+              <div id="chain-examples-btns" class="examples-btns"></div>
+            </div>
+          </div>
+
+          <!-- Controles de reproducción -->
+          <div id="playback-bar" class="playback-bar hidden">
+            <div class="toolbar-row">
+              <button type="button" id="btn-step-reset" class="btn btn-secondary btn-sm">Reiniciar</button>
+              <button type="button" id="btn-step-prev" class="btn btn-secondary btn-sm">Paso anterior</button>
+              <button type="button" id="btn-step-next" class="btn btn-primary btn-sm">Paso siguiente</button>
+              <button type="button" id="btn-step-play" class="btn btn-secondary btn-sm">Reproducir</button>
+              <button type="button" id="btn-step-all" class="btn btn-secondary btn-sm">Ejecutar todo</button>
+            </div>
+            <div class="speed-box">
+              <label for="speed-range" class="field-hint">Velocidad:</label>
+              <input type="range" id="speed-range" min="150" max="1500" step="50" value="600" />
+              <span id="speed-label" class="mono field-hint">0.60s</span>
+              <span id="step-counter" class="metric-badge">Paso 1 / 1</span>
+            </div>
+          </div>
+
+          <!-- Resultado final grande -->
+          <div id="sim-result-banner" class="sim-result hidden" aria-live="polite"></div>
+
+          <!-- Escenario paso a paso -->
+          <div id="sim-stage" class="sim-stack hidden">
+            <div class="sim-visual-grid">
+              <!-- Pila visual -->
+              <div class="sub-panel">
+                <div class="label-between">
+                  <h3 class="sub-heading">Pila</h3>
+                  <span class="field-hint">Tope arriba · fondo ($) abajo</span>
+                </div>
+                <div id="stack-visual" class="stack-visual"></div>
+              </div>
+
+              <!-- Cinta de entrada y acción actual -->
+              <div class="sim-right-stack">
+                <div class="sub-panel">
+                  <div class="label-between">
+                    <h3 class="sub-heading">Entrada pendiente</h3>
+                    <span class="field-hint">Token actual resaltado</span>
+                  </div>
+                  <div id="input-ribbon" class="input-ribbon"></div>
+                </div>
+
+                <div class="sub-panel">
+                  <div class="label-between">
+                    <h3 class="sub-heading">Acción en este paso</h3>
+                    <span id="sim-cell-indicator" class="mono field-hint"></span>
+                  </div>
+                  <div id="current-action-card" class="action-card"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Matriz LL(1) en vivo para ver M[A, a] consultada en cada paso -->
+            <details class="trace-details" open>
+              <summary>Matriz LL(1) sincronizada (celda M[A, a] del paso actual)</summary>
+              <div class="table-scroll sim-matrix-scroll">
+                <table class="matrix-table matrix-compact" id="sim-matrix-table">
+                  <thead id="sim-matrix-thead"></thead>
+                  <tbody id="sim-matrix-tbody"></tbody>
+                </table>
+              </div>
+            </details>
+
+            <!-- Tabla de traza + exportación -->
+            <div class="sub-panel">
+              <div class="label-between">
+                <div>
+                  <h3 class="sub-heading">Tabla de traza</h3>
+                  <span class="field-hint">Haz clic en una fila para ir a ese paso</span>
+                </div>
+                <div class="toolbar-row">
+                  <button type="button" id="btn-copy-trace" class="btn btn-secondary btn-sm">Copiar traza</button>
+                  <button type="button" id="btn-export-csv" class="btn btn-secondary btn-sm">Exportar CSV</button>
+                </div>
+              </div>
+
+              <div class="table-scroll trace-table-scroll">
+                <table class="data-table trace-table">
+                  <thead>
+                    <tr>
+                      <th scope="col" class="col-num">Paso</th>
+                      <th scope="col">Pila (fondo → tope)</th>
+                      <th scope="col">Entrada pendiente</th>
+                      <th scope="col">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sim-trace-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Árbol de derivación y derivación por la izquierda -->
+            <div id="derivation-box" class="sub-panel hidden">
+              <div class="label-between">
+                <h3 class="sub-heading">Árbol de derivación y derivación por la izquierda</h3>
+                <div class="sub-tabs sub-tabs-inline" role="tablist">
+                  <button type="button" class="sub-tab active" role="tab" data-deriv="tree" aria-selected="true">
+                    Árbol de derivación
+                  </button>
+                  <button type="button" class="sub-tab" role="tab" data-deriv="leftmost" aria-selected="false">
+                    Derivación por la izquierda
+                  </button>
+                </div>
+              </div>
+
+              <div id="deriv-tree-view" class="tree-wrap"></div>
+              <div id="deriv-leftmost-view" class="hidden">
+                <ol id="leftmost-ol" class="leftmost-list"></ol>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container footer-row">
+      <span>SyntaxLens LL(1) · Visualizador de análisis sintáctico predictivo</span>
+      <span>HTML + CSS + JS puro · Ejecuta <code>SyntaxLens.Tests.run()</code> en consola para verificar el motor</span>
+    </div>
+  </footer>
+
+  <!-- Tooltip flotante para celdas de la matriz -->
+  <div id="matrix-tooltip" class="matrix-tooltip hidden" role="tooltip"></div>
+
+  <!-- Scripts clásicos en el orden exacto requerido (sin ES modules, 100% offline) -->
+  <script src="js/examples.js"></script>
+  <script src="js/grammar.js"></script>
+  <script src="js/sets.js"></script>
+  <script src="js/table.js"></script>
+  <script src="js/parser.js"></script>
+  <script src="js/assistant.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/tests.js"></script>
+</body>
+</html>
